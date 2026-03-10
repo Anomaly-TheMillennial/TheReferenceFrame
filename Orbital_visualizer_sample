@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRF Engine v3.1</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and Babel CDNs to run JSX in the browser -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #fbbf24;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, memo } = React;
+
+        // --- Icons ---
+        const IconSettings = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>;
+        const IconPlay = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>;
+        const IconPause = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>;
+        const IconTrash = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>;
+        const IconChevron = ({ open }) => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}><polyline points="9 18 15 12 9 6"></polyline></svg>;
+        const IconCamera = () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>;
+
+        const Section = ({ title, icon, children, defaultOpen = true }) => {
+            const [open, setOpen] = useState(defaultOpen);
+            return (
+                <div className="mb-3 border-b border-white/5 pb-2">
+                    <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-2 py-2 px-1 text-left hover:bg-white/5 rounded transition-colors">
+                        {icon && <span className="flex-shrink-0">{icon}</span>}
+                        <span className="text-xs font-bold text-slate-200 uppercase tracking-widest flex-1">{title}</span>
+                        <IconChevron open={open} />
+                    </button>
+                    {open && <div className="pt-1 pb-2">{children}</div>}
+                </div>
+            );
+        };
+
+        const SliderControl = memo(({ label, symbol, min, max, step, value, onChange }) => (
+            <div className="flex flex-col space-y-1 mb-3 px-1">
+                <div className="flex justify-between items-center text-[10px] text-slate-400">
+                    <span className="font-medium uppercase tracking-tighter">{label} <span className="text-amber-400 font-mono ml-1">{symbol}</span></span>
+                    <input type="number" value={value} onChange={(e) => onChange(e.target.value)} className="w-16 py-0.5 px-1 bg-black/40 border border-slate-700/40 rounded text-right text-amber-400 text-[10px] focus:outline-none font-mono" step={step} />
+                </div>
+                <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(e.target.value)} className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500 hover:accent-amber-400 transition-all" />
+            </div>
+        ));
+
+        function App() {
+            const PRESETS = {
+                's-orbital (Sphere)':     { i_theta: 1.0, i_phi: 3.1415, j_theta_freq: 0, j_phi_freq: 0, throttle: 0.0, d_drift: 0.0, color: '#00e5ff' },
+                'p-orbital (Dumbbell)':   { i_theta: 1.0, i_phi: 3.1415, j_theta_freq: 2.0, j_phi_freq: 0, throttle: 1.0, d_drift: 0.0, color: '#ff3366' },
+                'd(xy) Clover':           { i_theta: 1.0, i_phi: 3.1415, j_theta_freq: 2.0, j_phi_freq: 2.0, throttle: 1.0, d_drift: 0.0, color: '#ff9d00' },
+                'd(z²) Torus':            { i_theta: 1.0, i_phi: 3.1415, j_theta_freq: 2.0, j_phi_freq: 0.0, throttle: 2.0, d_drift: 0.0, color: '#ffcc00' },
+                'f-orbital (6-lobe)':     { i_theta: 1.0, i_phi: 3.1415, j_theta_freq: 3.0, j_phi_freq: 3.0, throttle: 1.0, d_drift: 0.0, color: '#a855f7' },
+                'Boosted Drift':          { i_theta: 1.0, i_phi: 3.1415, j_theta_freq: 2.0, j_phi_freq: 2.0, throttle: 1.5, d_drift: 0.618, color: '#34d399' },
+                'High Drift (Chaotic)':   { i_theta: 1.0, i_phi: 1.0,    j_theta_freq: 1.0, j_phi_freq: 1.0, throttle: 3.0, d_drift: 1.0,   color: '#f0f0f0' },
+                'Golden Spiral':          { i_theta: 1.618, i_phi: 2.399, j_theta_freq: 1.0, j_phi_freq: 0.0, throttle: 0.8, d_drift: 0.0, color: '#fbbf24' },
+            };
+
+            const [params, setParams] = useState({
+                ...PRESETS['d(z²) Torus'],
+                epsilon: 0.015, r_unit: 140, steps: 250, opacity: 0.15, thickness: 0.5, bgColor: '#080c18'
+            });
+
+            const [isPlaying, setIsPlaying] = useState(true);
+            const [showControls, setShowControls] = useState(true);
+            const [activePreset, setActivePreset] = useState('d(z²) Torus');
+            const canvasRef = useRef(null);
+            const paramsRef = useRef(params);
+            const isPlayingRef = useRef(isPlaying);
+            const animationRef = useRef(null);
+            const currentTRef = useRef(0);
+            const transformRef = useRef({ pitch: 0.4, yaw: 0.5, distance: 600, fov: 500, panX: 0, panY: 0 });
+            const isDraggingRef = useRef(false);
+            const isPanningRef = useRef(false);
+            const lastMouseRef = useRef({ x: 0, y: 0 });
+
+            useEffect(() => { paramsRef.current = params; }, [params]);
+            useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+
+            const handleParamChange = (key, value) => {
+                setParams(prev => ({ ...prev, [key]: (key === 'color' || key === 'bgColor') ? value : parseFloat(value) }));
+                if (key !== 'bgColor') { setActivePreset(null); clearCanvas(); }
+            };
+
+            const applyPreset = (name) => {
+                setParams(prev => ({ ...prev, ...PRESETS[name] }));
+                setActivePreset(name);
+                clearCanvas();
+            };
+
+            const clearCanvas = useCallback(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                currentTRef.current = 0;
+            }, []);
+
+            const takeScreenshot = () => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const link = document.createElement('a');
+                link.download = `trf-${Date.now()}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            };
+
+            const drawFrame = useCallback(() => {
+                if (!isPlayingRef.current) {
+                    animationRef.current = requestAnimationFrame(drawFrame);
+                    return;
+                }
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const { i_theta, i_phi, j_theta_freq, j_phi_freq, throttle, d_drift, epsilon, r_unit, steps, color, opacity, thickness } = paramsRef.current;
+                const { pitch, yaw, distance, fov, panX, panY } = transformRef.current;
+                const dpr = window.devicePixelRatio || 1;
+                const cx = (canvas.width / dpr) / 2 + panX;
+                const cy = (canvas.height / dpr) / 2 + panY;
+
+                const hex = color.replace('#', '');
+                const rVal = parseInt(hex.substring(0, 2), 16);
+                const gVal = parseInt(hex.substring(2, 4), 16);
+                const bVal = parseInt(hex.substring(4, 6), 16);
+
+                ctx.strokeStyle = `rgba(${rVal}, ${gVal}, ${bVal}, ${opacity})`;
+                ctx.lineWidth = thickness;
+                ctx.globalCompositeOperation = 'lighter';
+                ctx.beginPath();
+                let t = currentTRef.current;
+
+                const cosY = Math.cos(yaw); const sinY = Math.sin(yaw);
+                const cosP = Math.cos(pitch); const sinP = Math.sin(pitch);
+
+                const project3D = (time) => {
+                    const theta = i_theta * time;
+                    const phi = i_phi * time;
+                    const phase = d_drift * time;
+                    const thetaBoost = Math.cos(j_theta_freq * theta + phase);
+                    const phiBoost = Math.cos(j_phi_freq * phi);
+                    const radialBoost = 1 + throttle * (thetaBoost * phiBoost);
+                    const r = r_unit * radialBoost;
+                    const x = r * Math.sin(theta) * Math.cos(phi);
+                    const y = r * Math.sin(theta) * Math.sin(phi);
+                    const z = r * Math.cos(theta);
+                    const x1 = x * cosY - z * sinY;
+                    const z1 = x * sinY + z * cosY;
+                    const y2 = y * cosP - z1 * sinP;
+                    const z2 = y * sinP + z1 * cosP;
+                    const scale = fov / (distance + z2);
+                    return { screenX: cx + x1 * scale, screenY: cy - y2 * scale };
+                };
+
+                const startPos = project3D(t);
+                ctx.moveTo(startPos.screenX, startPos.screenY);
+                for (let i = 0; i < steps; i++) {
+                    t += epsilon;
+                    const pos = project3D(t);
+                    ctx.lineTo(pos.screenX, pos.screenY);
+                }
+                ctx.stroke();
+                currentTRef.current = t;
+                animationRef.current = requestAnimationFrame(drawFrame);
+            }, []);
+
+            useEffect(() => {
+                const handleResize = () => {
+                    const canvas = canvasRef.current;
+                    if (canvas) {
+                        const dpr = window.devicePixelRatio || 1;
+                        canvas.width = window.innerWidth * dpr;
+                        canvas.height = window.innerHeight * dpr;
+                        canvas.style.width = window.innerWidth + 'px';
+                        canvas.style.height = window.innerHeight + 'px';
+                        canvas.getContext('2d').scale(dpr, dpr);
+                        clearCanvas();
+                    }
+                };
+                window.addEventListener('resize', handleResize);
+                handleResize();
+                animationRef.current = requestAnimationFrame(drawFrame);
+                return () => {
+                    window.removeEventListener('resize', handleResize);
+                    cancelAnimationFrame(animationRef.current);
+                };
+            }, [drawFrame, clearCanvas]);
+
+            const handlePointerDown = (e) => {
+                if (e.button === 2 || e.button === 1) { isPanningRef.current = true; } else { isDraggingRef.current = true; }
+                lastMouseRef.current = { x: e.clientX, y: e.clientY };
+            };
+
+            const handlePointerMove = (e) => {
+                if (!isDraggingRef.current && !isPanningRef.current) return;
+                const dx = e.clientX - lastMouseRef.current.x;
+                const dy = e.clientY - lastMouseRef.current.y;
+                if (isPanningRef.current) { transformRef.current.panX += dx; transformRef.current.panY += dy; }
+                else { transformRef.current.yaw += dx * 0.005; transformRef.current.pitch += dy * 0.005; }
+                lastMouseRef.current = { x: e.clientX, y: e.clientY };
+                clearCanvas();
+            };
+
+            return (
+                <div className="relative w-full h-screen overflow-hidden text-slate-200 select-none" style={{ background: params.bgColor, transition: 'background 0.3s ease' }}>
+                    <canvas ref={canvasRef} className="absolute inset-0 cursor-crosshair" style={{ touchAction: 'none' }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={() => { isDraggingRef.current = false; isPanningRef.current = false; }} onWheel={(e) => { e.preventDefault(); transformRef.current.distance = Math.max(80, Math.min(transformRef.current.distance + e.deltaY * 0.5, 3000)); clearCanvas(); }} onContextMenu={e => e.preventDefault()} />
+                    
+                    <div className="absolute top-0 left-0 h-full z-40 transition-all duration-300 overflow-y-auto bg-black/80 backdrop-blur-xl border-r border-white/5 shadow-2xl" style={{ width: showControls ? '280px' : '0px', opacity: showControls ? 1 : 0 }}>
+                        <div className="p-6 space-y-4 w-[280px]">
+                            <header className="mb-4">
+                                <h1 className="text-xl font-black italic tracking-tighter text-white">TRF ENGINE <span className="text-[10px] not-italic text-amber-500 font-mono">v3.1</span></h1>
+                            </header>
+                            <div className="flex gap-2">
+                                <button onClick={() => setIsPlaying(!isPlaying)} className={`flex-1 flex items-center justify-center gap-2 py-2 rounded font-bold text-[10px] ${isPlaying ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'bg-emerald-500 text-black'}`}>
+                                    {isPlaying ? <IconPause /> : <IconPlay />} {isPlaying ? 'PAUSE' : 'IGNITE'}
+                                </button>
+                                <button onClick={clearCanvas} className="p-2 bg-white/10 rounded"><IconTrash /></button>
+                                <button onClick={takeScreenshot} className="p-2 bg-white/10 rounded"><IconCamera /></button>
+                            </div>
+                            <Section title="Library">
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    {Object.keys(PRESETS).map(n => (
+                                        <button key={n} onClick={() => applyPreset(n)} className={`text-[9px] p-1.5 rounded text-left truncate border ${activePreset === n ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' : 'bg-white/5 border-white/5 text-slate-500'}`}>{n}</button>
+                                    ))}
+                                </div>
+                            </Section>
+                            <Section title="Rotors (i²=-1)">
+                                <SliderControl label="Polar" symbol="θ" min="0" max="10" step="0.001" value={params.i_theta} onChange={v => handleParamChange('i_theta', v)} />
+                                <SliderControl label="Azimuthal" symbol="φ" min="0" max="10" step="0.001" value={params.i_phi} onChange={v => handleParamChange('i_phi', v)} />
+                            </Section>
+                            <Section title="Boosters (j²=+1)">
+                                <SliderControl label="P-Lobes" symbol="jθ" min="0" max="10" step="1" value={params.j_theta_freq} onChange={v => handleParamChange('j_theta_freq', v)} />
+                                <SliderControl label="Gain" symbol="‖j‖" min="0" max="3" step="0.1" value={params.throttle} onChange={v => handleParamChange('throttle', v)} />
+                            </Section>
+                            <Section title="Environment">
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-[10px] font-bold text-slate-500 uppercase">Colors</label>
+                                        <div className="flex gap-2">
+                                            <input type="color" value={params.color} onChange={e => handleParamChange('color', e.target.value)} className="w-6 h-6 rounded cursor-pointer border-none bg-transparent" />
+                                            <input type="color" value={params.bgColor} onChange={e => handleParamChange('bgColor', e.target.value)} className="w-6 h-6 rounded cursor-pointer border-none bg-transparent" />
+                                        </div>
+                                    </div>
+                                    <SliderControl label="Glow" symbol="α" min="0.01" max="0.5" step="0.01" value={params.opacity} onChange={v => handleParamChange('opacity', v)} />
+                                    <SliderControl label="Weight" symbol="w" min="0.1" max="3" step="0.1" value={params.thickness} onChange={v => handleParamChange('thickness', v)} />
+                                </div>
+                            </Section>
+                        </div>
+                    </div>
+                    <button onClick={() => setShowControls(!showControls)} className="absolute top-4 left-4 z-50 p-2.5 rounded bg-black/50 border border-white/10 text-amber-400/80 hover:text-amber-400 transition-all backdrop-blur-md">
+                        <IconSettings />
+                    </button>
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 px-4 py-1.5 rounded-full text-[9px] font-mono bg-black/40 border border-white/5 text-slate-500 backdrop-blur-sm">
+                        DRAG: ROTATE · RIGHT-DRAG: PAN · SCROLL: ZOOM
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
